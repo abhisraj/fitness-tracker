@@ -2,6 +2,9 @@ import { Injectable } from '@angular/core';
 import { AngularFirestore } from 'angularfire2/firestore';
 import { Training } from './training.model';
 import { Subject } from 'rxjs/Subject';
+import { Subscription } from 'rxjs/Subscription';
+import { UIService } from '../shared/ui.service';
+import { error } from 'selenium-webdriver';
 
 @Injectable()
 
@@ -13,14 +16,17 @@ export class TrainingService {
     private availableTrainings: Training[] = [];
 
     private runningTraining: Training;
+    private fbSubs: Subscription[] = [];
 
-    constructor(private db: AngularFirestore) {}
+    constructor(private db: AngularFirestore, private uiService: UIService) {}
 
     fetchAvailableTrainings() {
-        this.db
+        this.uiService.loadingStateChanged.next(true);
+        this.fbSubs.push(this.db
             .collection('availableTrainings')
             .snapshotChanges()
             .map(docArray => {
+                // throw(new Error());
                 return docArray.map(doc => {
                     return {
                         id: doc.payload.doc.id,
@@ -28,17 +34,23 @@ export class TrainingService {
                         duration: doc.payload.doc.data().duration,
                         calories: doc.payload.doc.data().calories
                     };
-            });
-        })
-        .subscribe((trainings: Training[]) => {
-            console.log(trainings);
-            this.availableTrainings = trainings;
-            this.trainingsChanged.next([...this.availableTrainings]);
-        });
+                });
+            })
+            .subscribe((trainings: Training[]) => {
+                this.uiService.loadingStateChanged.next(false);
+                console.log(trainings);
+                this.availableTrainings = trainings;
+                this.trainingsChanged.next([...this.availableTrainings]);
+            }, error => {
+                this.uiService.loadingStateChanged.next(false);
+                this.uiService.showSnackbar('Fetching training failed, please try again later', null, 3000);
+                this.trainingsChanged.next(null);
+            })
+        );
     }
 
     startTraining(selectedId: string) {
-        //this.db.doc('availableTrainings/' + selectedId).update({lastSelected: new Date()});
+        // this.db.doc('availableTrainings/' + selectedId).update({lastSelected: new Date()});
         this.runningTraining = this.availableTrainings.find(
             tr => tr.id === selectedId
         );
@@ -72,11 +84,15 @@ export class TrainingService {
     }
 
     fetchCompletedorCancelledTrainings() {
-        this.db.collection('finishedTrainings')
-        .valueChanges()
-        .subscribe((trainings: Training[]) => {
-            this.finishedTrainingsChanged.next(trainings);
-        });
+        this.fbSubs.push(this.db.collection('finishedTrainings')
+            .valueChanges()
+            .subscribe((trainings: Training[]) => {
+                this.finishedTrainingsChanged.next(trainings);
+        }));
+    }
+
+    cancelSubscriptions() {
+        this.fbSubs.forEach(sub => sub.unsubscribe());
     }
 
     private addDataToDatabase(training: Training) {
