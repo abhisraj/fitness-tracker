@@ -11,13 +11,13 @@ const initialState = {
 export function uiReducer(state = initialState, action: UIActions) {
     switch (action.type) {
         case START_LOADING:
-        return {
-            isLoading: true
-        };
+            return {
+                isLoading: true
+            };
         case STOP_LOADING:
-        return {
-            isLoading: false
-        };
+            return {
+                isLoading: false
+            };
         default:
         return state;
     }

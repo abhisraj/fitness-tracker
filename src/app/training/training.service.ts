@@ -1,29 +1,23 @@
 import { Injectable } from '@angular/core';
 import { AngularFirestore } from 'angularfire2/firestore';
-import { Subject } from 'rxjs/Subject';
 import { Subscription } from 'rxjs/Subscription';
+import { take } from 'rxjs/operators';
 import { Store } from '@ngrx/store';
 
 import { Training } from './training.model';
 import { UIService } from '../shared/ui.service';
 import * as UI from '../shared/ui.actions';
-import * as fromRoot from '../app.reducer';
+import * as TrainingAct from './training.actions';
+import * as fromTraining from './training.reducer';
 
 @Injectable()
 export class TrainingService {
-
-    trainingChanged = new Subject<Training>();
-    trainingsChanged = new Subject<Training[]>();
-    finishedTrainingsChanged = new Subject<Training[]>();
-    private availableTrainings: Training[] = [];
-
-    private runningTraining: Training;
     private fbSubs: Subscription[] = [];
 
     constructor(
         private db: AngularFirestore,
         private uiService: UIService,
-        private store: Store<fromRoot.State>
+        private store: Store<fromTraining.State>
     ) {}
 
     fetchAvailableTrainings() {
@@ -42,58 +36,54 @@ export class TrainingService {
                     };
                 });
             })
-            .subscribe((trainings: Training[]) => {
-                this.store.dispatch(new UI.StopLoading());
-                console.log(trainings);
-                this.availableTrainings = trainings;
-                this.trainingsChanged.next([...this.availableTrainings]);
+            .subscribe(
+                (trainings: Training[]) => {
+                    this.store.dispatch(new UI.StopLoading());
+                    this.store.dispatch(new TrainingAct.SetAvailableTrainings(trainings));
             }, error => {
                 this.store.dispatch(new UI.StopLoading());
                 this.uiService.showSnackbar('Fetching training failed, please try again later', null, 3000);
-                this.trainingsChanged.next(null);
             })
         );
     }
 
     startTraining(selectedId: string) {
-        // this.db.doc('availableTrainings/' + selectedId).update({lastSelected: new Date()});
-        this.runningTraining = this.availableTrainings.find(
-            tr => tr.id === selectedId
-        );
-        this.trainingChanged.next({ ...this.runningTraining });
+        this.store.dispatch(new TrainingAct.StartTraining(selectedId));
     }
 
     completeTraining() {
-        this.addDataToDatabase({
-            ...this.runningTraining,
-            date: new Date(),
-            state: 'completed'
-        });
-        this.runningTraining = null;
-        this.trainingChanged.next(null);
+        this.store.select(fromTraining.getActiveTraining).pipe(take(1)).subscribe(
+            ex => {
+                this.addDataToDatabase({
+                    ...ex,
+                    date: new Date(),
+                    state: 'completed'
+                });
+                this.store.dispatch(new TrainingAct.StopTraining());
+            }
+        );
     }
 
     cancelTraining(progress: number) {
-        this.addDataToDatabase({
-            ...this.runningTraining,
-            duration: this.runningTraining.duration * (progress / 100 ),
-            calories: this.runningTraining.calories * (progress / 100),
-            date: new Date(),
-            state: 'cancelled'
-        });
-        this.runningTraining = null;
-        this.trainingChanged.next(null);
-    }
-
-    getRunninmgTraining() {
-        return { ...this.runningTraining };
+        this.store.select(fromTraining.getActiveTraining).pipe(take(1)).subscribe(
+            ex => {
+                this.addDataToDatabase({
+                    ...ex,
+                    duration: ex.duration * (progress / 100 ),
+                    calories: ex.calories * (progress / 100),
+                    date: new Date(),
+                    state: 'cancelled'
+                });
+                this.store.dispatch(new TrainingAct.StopTraining());
+            }
+        );
     }
 
     fetchCompletedorCancelledTrainings() {
         this.fbSubs.push(this.db.collection('finishedTrainings')
             .valueChanges()
             .subscribe((trainings: Training[]) => {
-                this.finishedTrainingsChanged.next(trainings);
+                this.store.dispatch(new TrainingAct.SetFinishedTrainings(trainings));
         }));
     }
 

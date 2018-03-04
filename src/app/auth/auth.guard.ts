@@ -3,7 +3,6 @@ import {
     CanLoad,
     ActivatedRouteSnapshot,
     RouterStateSnapshot,
-    Router,
     Route
  } from '@angular/router';
 import { Injectable } from '@angular/core';
@@ -15,7 +14,7 @@ import * as fromRoot from '../app.reducer';
 @Injectable()
 export class AuthGaurd implements CanActivate, CanLoad {
 
-    constructor(private store: Store<fromRoot.State>, private router: Router) {
+    constructor(private store: Store<fromRoot.State>) {
 
     }
 
